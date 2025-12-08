@@ -4,6 +4,8 @@ from utils import calculate_turn_dir
 from algorithms import a_star, generate_instructions
 from simulation import TrafficSimulator
 from spatial import SpatialGrid
+from hud_renderer import HudRenderer
+from utils import calculate_turn_dir
 
 # Stilovi cesta (dodani 'blocked' i 'jammed')
 ROAD_STYLES = {
@@ -48,6 +50,39 @@ class MapVisualizer:
         self.padding = 50 
         avg_lat = (self.min_lat + self.max_lat) / 2
         self.aspect_ratio = math.cos(math.radians(avg_lat))
+        
+    def fit_to_bounds(self, min_lat, max_lat, min_lon, max_lon):
+        """ Auto-zooms and pans to fit the defined geographic bounds with padding. """
+        if min_lat >= max_lat or min_lon >= max_lon: return
+        
+        # Determine strict bounds in pixels would require current scale
+        # Instead, we calculate required scale to fit into width/height
+        
+        # Geo dimensions
+        lat_span = max_lat - min_lat
+        lon_span = max_lon - min_lon
+        
+        # Add simpler padding
+        padding_factor = 1.2
+        
+        # Target scale
+        target_scale_x = (self.width * 0.8) / (lon_span * self.aspect_ratio) if lon_span > 0 else self.scale
+        target_scale_y = (self.height * 0.8) / lat_span if lat_span > 0 else self.scale
+        
+        self.scale = min(target_scale_x, target_scale_y)
+        
+        # Center point
+        center_lat = (min_lat + max_lat) / 2
+        center_lon = (min_lon + max_lon) / 2
+        
+        # Offset calculation
+        # x = center_x + (lon - mid_lon)*ar*scale + off_x
+        # We want x = center_x for the center point.
+        # => (center_lon - mid_lon)*ar*scale + off_x = 0
+        self.offset_x = -((center_lon - self.mid_lon) * self.aspect_ratio * self.scale)
+        self.offset_y = -(-(center_lat - self.mid_lat) * self.scale)
+        
+        self.draw_map()
         lat_diff = self.max_lat - self.min_lat
         lon_diff = (self.max_lon - self.min_lon) * self.aspect_ratio
         if lat_diff == 0: lat_diff = 1
@@ -61,6 +96,7 @@ class MapVisualizer:
 
         # Stanje
         self.grid = SpatialGrid(graph) # Spatial Indexing
+        self.hud = HudRenderer(self.canvas, self.width, self.height)
         self.start_node = None
         self.end_node = None
         self.click_state = 0 
@@ -132,7 +168,12 @@ class MapVisualizer:
 
         # Tražilica
         tk.Label(self.sidebar, text="PRETRAGA ULICE", bg="#2a2a2a", fg="white", font=("Arial", 10, "bold"), pady=10).pack()
-        self.entry_search = tk.Entry(self.sidebar, bg="white", fg="black")
+        self.entry_search = tk.Entry(
+            self.sidebar, 
+            bg="#444", fg="white", 
+            insertbackground="white", 
+            relief=tk.FLAT, font=("Arial", 10)
+        )
         self.entry_search.pack(fill=tk.X, padx=10)
         tk.Button(self.sidebar, text="Traži", bg="#555", fg="white", command=self.search_street).pack(fill=tk.X, padx=10, pady=5)
 
@@ -241,26 +282,55 @@ class MapVisualizer:
                 else:
                     style = ROAD_STYLES.get(rtype, ROAD_STYLES['unknown'])
                 
-                all_edges.append((style['width'], style['color'], ux, uy, vx, vy))
+                # Check One-Way (Simple detection)
+                is_oneway = True
+                if v_id in self.graph.edges:
+                    for e_back in self.graph.edges[v_id]:
+                        if e_back['to'] == u_id:
+                            is_oneway = False
+                            break
+                
+                all_edges.append((style['width'], style['color'], ux, uy, vx, vy, is_oneway))
 
         all_edges.sort(key=lambda x: x[0])
-        for w, c, ux, uy, vx, vy in all_edges:
+        for w, c, ux, uy, vx, vy, is_oneway in all_edges:
             self.canvas.create_line(ux, uy, vx, vy, fill=c, width=w, capstyle=tk.ROUND)
-        
+            
+            # Draw Arrow for One-Way Streets
+            if is_oneway and self.scale > 2.0: # Only draw if zoomed in enough
+                # Center point
+                mx, my = (ux+vx)/2, (uy+vy)/2
+                # Direction vector
+                dx, dy = vx-ux, vy-uy
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    dx, dy = dx/length, dy/length
+                    # Perpendicular vector
+                    px, py = -dy, dx
+                    
+                    arrow_size = 4
+                    # Tip
+                    ax, ay = mx + dx*arrow_size, my + dy*arrow_size
+                    # Base corners
+                    bx, by = mx - dx*arrow_size + px*arrow_size*0.6, my - dy*arrow_size + py*arrow_size*0.6
+                    cx, cy = mx - dx*arrow_size - px*arrow_size*0.6, my - dy*arrow_size - py*arrow_size*0.6
+                    
+                    self.canvas.create_polygon(ax, ay, bx, by, cx, cy, fill="#aaaaaa", outline="")
+
         # POIs
         if self.show_pois.get():
             self.draw_pois()
 
-        # Legend
-        self.draw_legend()
+        # Render HUD elements via Helper
+        self.hud.draw_legend()
 
-        # Speed/Limit HUD (Bottom Left) - Only draw if not animating to avoid flicker overlap, usually drawn by loop
+        # Speed/Limit HUD
         if not hasattr(self, 'anim_running') or not self.anim_running:
-            self.draw_speed_hud(0, 50) # Default values
+            self.hud.draw_speedometer(0, 50) 
             
-        # Instruction HUD (Top Center)
+        # Instruction HUD
         if hasattr(self, 'current_instruction_text'):
-            self.draw_instruction_hud(self.current_instruction_text)
+            self.hud.draw_navigation(self.current_instruction_text)
 
         # Ako imamo rutu, ponovno je nacrtaj preko svega
         if self.start_node and self.end_node and self.click_state == 2:
@@ -285,11 +355,14 @@ class MapVisualizer:
             time_sec = self.calculate_time(path)
             self.draw_dashboard(dist, int(time_sec // 60), int(time_sec % 60))
             
+            # Auto-Fit to Route
+            lats = [self.graph.nodes[n].lat for n in path]
+            lons = [self.graph.nodes[n].lon for n in path]
+            if lats and lons:
+                self.fit_to_bounds(min(lats), max(lats), min(lons), max(lons))
+            
             # Generiraj instrukcije (i dalje ih generiramo za export)
             instructions = generate_instructions(self.graph, path)
-            # self.list_instructions.delete(0, tk.END)
-            # for instr in instructions:
-            #     self.list_instructions.insert(tk.END, instr)
             self.current_instructions = instructions # Save for export
             self.current_route_path = path # Save for animation
         else:
@@ -448,44 +521,31 @@ class MapVisualizer:
                 self.draw_map()
 
     def search_street(self):
-        query = self.entry_search.get().lower()
+        query = self.entry_search.get().lower().strip()
         if not query: return
         
-        found = False
-        for u_id, edges in self.graph.edges.items():
-            for edge in edges:
-                name = edge.get('name', '').lower()
-                if query in name:
-                    # Found it!
-                    u = self.graph.nodes[u_id]
-                    v = self.graph.nodes[edge['to']]
-                    
-                    # Center on midpoint
-                    mid_lat = (u.lat + v.lat) / 2
-                    mid_lon = (u.lon + v.lon) / 2
-                    
-                    # Calculate offsets to center this point
-                    # We want x = self.center_x => self.center_x + (base_x * self.zoom) + new_offset_x = self.center_x
-                    # => new_offset_x = -(base_x * self.zoom)
-                    
-                    base_x = (mid_lon - self.mid_lon) * self.aspect_ratio * self.scale
-                    base_y = -(mid_lat - self.mid_lat) * self.scale
-                    
-                    self.offset_x = -(base_x * self.zoom)
-                    self.offset_y = -(base_y * self.zoom)
-                    
-                    self.draw_map()
-                    
-                    # Highlight
-                    cx, cy = self.to_screen(mid_lat, mid_lon)
-                    self.canvas.create_oval(cx-15, cy-15, cx+15, cy+15, outline="yellow", width=4, tags="highlight")
-                    self.lbl_info.config(text=f"Pronađeno:\n{edge.get('name')}", fg="yellow")
-                    
-                    found = True
-                    break
-            if found: break
-            
-        if not found:
+        # O(1) Search via Index
+        nodes = self.graph.street_index.get(query)
+        
+        if nodes:
+            # Center on the first node found
+            target_node_id = nodes[0]
+            if target_node_id in self.graph.nodes:
+                target_node = self.graph.nodes[target_node_id]
+                
+                # Center View
+                self.offset_x = -target_node.lon * self.scale + self.width / 2
+                self.offset_y = target_node.lat * self.scale + self.height / 2
+                
+                self.draw_map()
+                self.lbl_info.config(text=f"Pronađeno: {query.title()}", fg="#00ff00")
+                
+                # Highlight
+                cx, cy = self.to_screen(target_node.lat, target_node.lon)
+                self.canvas.create_oval(cx-15, cy-15, cx+15, cy+15, outline="yellow", width=4, tags="highlight")
+            else:
+                self.lbl_info.config(text="Greška u podacima", fg="red")
+        else:
             self.lbl_info.config(text=f"Nije pronađeno:\n{query}", fg="red")
 
     def on_mouse_move(self, event):
@@ -596,11 +656,16 @@ class MapVisualizer:
             current_speed = limit * (0.9 + 0.2 * random.random()) # +/- 10%
             if current_speed < 0: current_speed = 0
             
-            # Draw HUDs (Refresh just the HUD areas or overlay tags)
+            # Draw HUDs via Helper
             self.canvas.delete("hud_speed")
-            self.draw_speed_hud(current_speed, limit)
+            self.hud.draw_speedometer(current_speed, limit)
             
-            # --- NEXT TURN LOGIC ---
+            # ...
+            
+            self.canvas.delete("hud_instr")
+            self.hud.draw_navigation(hud_text)
+            
+            self.anim_index += 1
             # Calculate distance to next change of street name
             next_turn_dist = 0
             next_street_name = "Cilj"
@@ -687,54 +752,6 @@ class MapVisualizer:
             self.canvas.delete(self.car_id)
             self.canvas.delete("hud_speed") # Clean up
             self.canvas.delete("hud_instr")
-
-    def draw_legend(self):
-        # Semi-transparent background simulation (stipple)
-        # Tkinter canvases don't support alpha, so we use a dark rectangle
-        w, h = 180, 130
-        x, y = self.width - 200 - w - 20, self.height - h - 20 # Bottom Right relative to canvas
-        
-        self.canvas.create_rectangle(x, y, x+w, y+h, fill="#111", outline="#444", width=2, tags="legend")
-        self.canvas.create_text(x+10, y+15, text="LEGENDA", fill="white", font=("Arial", 10, "bold"), anchor="w", tags="legend")
-        
-        items = [
-            ("Ulica", "#00ffff"),
-            ("Ruta", "#00ff00"), 
-            ("Gužva", "#ff4400"), 
-            ("Škola/POI", "#55ff55"),
-            ("Dućan", "#ff55ff")
-        ]
-        
-        for i, (label, color) in enumerate(items):
-            iy = y + 40 + i*18
-            self.canvas.create_oval(x+10, iy, x+20, iy+10, fill=color, outline=color, tags="legend")
-            self.canvas.create_text(x+30, iy+5, text=label, fill="#aaa", font=("Arial", 9), anchor="w", tags="legend")
-
-    def draw_speed_hud(self, speed, limit):
-        # Bottom Left
-        x, y = 20, self.height - 80
-        self.canvas.create_rectangle(x, y, x+120, y+60, fill="#111", outline="#444", width=2, tags="hud_speed")
-        self.canvas.create_text(x+10, y+20, text="BRZINA", fill="#888", font=("Arial", 8), anchor="w", tags="hud_speed")
-        
-        color = "white"
-        if speed > limit: color = "red"
-        
-        self.canvas.create_text(x+10, y+45, text=f"{int(speed)} km/h", fill=color, font=("Consolas", 18, "bold"), anchor="w", tags="hud_speed")
-        
-        # Limit circle
-        lx, ly = x+90, y+30
-        self.canvas.create_oval(lx-15, ly-15, lx+15, ly+15, outline="red", width=3, tags="hud_speed")
-        self.canvas.create_text(lx, ly, text=str(limit), fill="white", font=("Arial", 10, "bold"), tags="hud_speed")
-
-    def draw_instruction_hud(self, text):
-        # Bottom Center (Above Speed HUD effectively, or absolute bottom center)
-        w = 600
-        x = (self.width - 200) / 2 - w/2
-        # Use height - 60 (to match speed HUD height)
-        y = self.height - 70 
-        
-        self.canvas.create_rectangle(x, y, x+w, y+50, fill="#000000", outline="#00ff00", width=2, tags="hud_instr")
-        self.canvas.create_text(x+w/2, y+25, text=text, fill="#00ff00", font=("Segoe UI", 14, "bold"), tags="hud_instr")
 
     def show(self):
         self.root.mainloop()

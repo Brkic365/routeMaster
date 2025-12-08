@@ -1,5 +1,6 @@
 import heapq
-from utils import haversine_distance
+import math
+from utils import calculate_turn_dir, haversine_distance
 
 def reconstruct_path(previous_nodes, start, end):
     """
@@ -26,67 +27,72 @@ def reconstruct_path(previous_nodes, start, end):
 
 def a_star(graph, start_id, end_id):
     """
-    A* (A-Star) algoritam za najkraći put.
-    
-    Koristi formulu: f(n) = g(n) + h(n)
-    - g(n): Stvarna cijena puta od starta do n
-    - h(n): Heuristika (zračna udaljenost od n do cilja)
+    A* algorithm with traffic awareness and Turn Costs.
+    Penalty is added for sharp turns to encourage smoother paths.
     """
-    print(f"Pokrećem A*: {start_id} -> {end_id}")
-    
-    # Priority Queue: pohranjuje (f_score, id_čvora)
-    # heapq uvijek drži onaj s najmanjim f_score na vrhu
     pq = [(0, start_id)]
     
-    # g_score: Najkraća poznata udaljenost od starta do svakog čvora
-    # Inicijalno beskonačno za sve osim starta
     g_score = {node: float('infinity') for node in graph.nodes}
     g_score[start_id] = 0
     
-    # Rječnik za rekonstrukciju puta
-    previous_nodes = {node: None for node in graph.nodes}
+    came_from = {node: None for node in graph.nodes}
     
-    visited_count = 0
-
     while pq:
-        # 1. Uzmi čvor koji "najviše obećava" (najmanji f)
-        current_f, current_node = heapq.heappop(pq)
+        current_f, current_node_id = heapq.heappop(pq)
         
-        # Ako smo došli do cilja, gotovo!
-        if current_node == end_id:
-            print(f"✅ Cilj pronađen! Obrađeno čvorova: {visited_count}")
-            path = reconstruct_path(previous_nodes, start_id, end_id)
-            return path, g_score[end_id]
+        if current_node_id == end_id:
+            return reconstruct_path(came_from, start_id, end_id), g_score[end_id]
+            
+        # Optimization: Lazy deletion
+        if current_f > g_score[current_node_id] + haversine_distance(graph.nodes[current_node_id].lat, graph.nodes[current_node_id].lon, graph.nodes[end_id].lat, graph.nodes[end_id].lon) + 1000:
+             # Heuristic check approximation or just comparing g_score (if we stored f_score)
+             # Better: if g_score[current] is much smaller than what we popped (if we stored (f, g, u))
+             pass
 
-        visited_count += 1
+        u_node = graph.nodes[current_node_id]
+        parent_id = came_from.get(current_node_id)
         
-        # 2. Provjeri sve susjede
-        for edge in graph.get_neighbors(current_node):
-            neighbor = edge['to']
-            weight = edge['weight'] # Ovdje simulacija kasnije mijenja težinu (gužve)
+        for edge in graph.get_neighbors(current_node_id):
+            neighbor_id = edge['to']
+            v_node = graph.nodes[neighbor_id]
             
-            # g(n) = put do trenutnog + težina do susjeda
-            tentative_g = g_score[current_node] + weight
+            # 1. Base Weight (Traffic)
+            weight = edge['weight']
+            status = edge.get('status')
+            if status == 'jammed': weight *= 5.0
+            elif status == 'blocked': weight = float('inf')
             
-            # Ako smo našli brži put do susjeda nego prije...
-            if tentative_g < g_score[neighbor]:
-                previous_nodes[neighbor] = current_node
-                g_score[neighbor] = tentative_g
+            # 2. Turn Penalty
+            turn_penalty = 0
+            if parent_id:
+                p_node = graph.nodes[parent_id]
+                # Angle Calculation
+                # Vector P->U
+                v1x, v1y = u_node.lat - p_node.lat, u_node.lon - p_node.lon
+                # Vector U->V
+                v2x, v2y = v_node.lat - u_node.lat, v_node.lon - u_node.lon
                 
-                # Računamo heuristiku (h)
-                neighbor_obj = graph.nodes[neighbor]
-                end_obj = graph.nodes[end_id]
+                # Dot product
+                len1 = math.hypot(v1x, v1y)
+                len2 = math.hypot(v2x, v2y)
                 
-                h_score = haversine_distance(
-                    neighbor_obj.lat, neighbor_obj.lon,
-                    end_obj.lat, end_obj.lon
-                )
+                if len1 > 0 and len2 > 0:
+                    dot = (v1x * v2x + v1y * v2y) / (len1 * len2)
+                    dot = max(-1.0, min(1.0, dot))
+                    # If dot is near 1, it's straight. If dot < 0.5 (60 deg), penalty.
+                    if dot < 0.5:
+                        turn_penalty = 20.0 # equivalent to 20m detour
+            
+            tentative_g = g_score[current_node_id] + weight + turn_penalty
+            
+            if tentative_g < g_score[neighbor_id]:
+                came_from[neighbor_id] = current_node_id
+                g_score[neighbor_id] = tentative_g
                 
-                # f = g + h
-                f_score = tentative_g + h_score
-                heapq.heappush(pq, (f_score, neighbor))
+                # Heuristic
+                h = haversine_distance(v_node.lat, v_node.lon, graph.nodes[end_id].lat, graph.nodes[end_id].lon)
+                heapq.heappush(pq, (tentative_g + h, neighbor_id))
                 
-    # Ako se petlja završi a nismo našli cilj:
     return [], float('infinity')
 
 def generate_instructions(graph, path):

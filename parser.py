@@ -108,6 +108,13 @@ def load_osm_data(filepath):
                 dist = haversine_distance(u_node.lat, u_node.lon, v_node.lat, v_node.lon)
                 
                 graph.add_edge(u, v, dist, road_type, name)
+                
+                # Update Search Index
+                if name and name != "Unknown Road":
+                    # Store tuple (u, v) or just u? Storing u is enough to find the node.
+                    # Actually storing u_id is better to jump to node.
+                    graph.street_index[name.lower()].append(u)
+
                 if not is_oneway:
                     graph.add_edge(v, u, dist, road_type, name)
 

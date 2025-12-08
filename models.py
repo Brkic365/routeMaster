@@ -14,11 +14,14 @@ class POI:
         self.type = type_name # 'school', 'shop', 'park'...
         self.name = name
 
+from collections import defaultdict
+
 class Graph:
     def __init__(self):
         self.nodes = {}  # id -> Node objekt
         self.edges = {} 
         self.pois = []   # List of POI objects 
+        self.street_index = defaultdict(list) # name -> list of edge_ids 
 
     def add_node(self, id, lat, lon):
         self.nodes[id] = Node(id, lat, lon)
