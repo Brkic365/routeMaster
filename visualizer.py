@@ -7,12 +7,12 @@ from spatial import SpatialGrid
 from hud_renderer import HudRenderer
 from utils import calculate_turn_dir
 
-# Stilovi cesta (dodani 'blocked' i 'jammed')
+# Road visualization styles
 ROAD_STYLES = {
-    'motorway':     {'width': 5, 'color': '#00ffff'},  # Cyan Neon
+    'motorway':     {'width': 5, 'color': '#00ffff'},  # Cyan
     'trunk':        {'width': 5, 'color': '#00ffff'},
-    'primary':      {'width': 4, 'color': '#ff00ff'},  # Magenta Neon
-    'secondary':    {'width': 3, 'color': '#ffff00'},  # Yellow Neon
+    'primary':      {'width': 4, 'color': '#ff00ff'},  # Magenta
+    'secondary':    {'width': 3, 'color': '#ffff00'},  # Yellow
     'tertiary':     {'width': 2, 'color': '#ffffff'},  # White
     'residential':  {'width': 1, 'color': '#555555'},  # Dark Grey
     'service':      {'width': 1, 'color': '#333333'},
@@ -20,9 +20,9 @@ ROAD_STYLES = {
     'primary_link': {'width': 3, 'color': '#ff00ff'},
     'unknown':      {'width': 1, 'color': '#333333'},
     
-    # --- NOVI STILOVI ZA SIMULACIJU ---
-    'jammed':       {'width': 5, 'color': '#ff4400'}, # Bright Orange/Red
-    'blocked':      {'width': 5, 'color': '#ff0000'}  # Pure Red Neon
+    # Simulation states
+    'jammed':       {'width': 5, 'color': '#ff4400'}, 
+    'blocked':      {'width': 5, 'color': '#ff0000'}
 }
 
 SPEED_LIMITS = {
@@ -36,24 +36,90 @@ SPEED_LIMITS = {
 class MapVisualizer:
     def __init__(self, graph, width=1200, height=900):
         self.graph = graph
-        self.simulator = TrafficSimulator(graph) # <--- POVEZIVANJE
+        self.simulator = TrafficSimulator(graph)
         
         self.width = width
         self.height = height
-        self.bg_color = "#050505" # Almost black background
+        self.bg_color = "#050505"
 
-        # ... (Skaliranje ostaje isto kao prije) ...
+        # Geo-calculations (Bounds)
         lats = [n.lat for n in graph.nodes.values()]
         lons = [n.lon for n in graph.nodes.values()]
-        self.min_lat, self.max_lat = min(lats), max(lats)
-        self.min_lon, self.max_lon = min(lons), max(lons)
+        
+        if not lats or not lons:
+            # Fallback for empty graph
+            self.min_lat, self.max_lat = 0, 1
+            self.min_lon, self.max_lon = 0, 1
+        else:
+            self.min_lat, self.max_lat = min(lats), max(lats)
+            self.min_lon, self.max_lon = min(lons), max(lons)
+            
         self.padding = 50 
         avg_lat = (self.min_lat + self.max_lat) / 2
         self.aspect_ratio = math.cos(math.radians(avg_lat))
         
+        # Initial Scale Logic
+        lat_diff = self.max_lat - self.min_lat
+        lon_diff = (self.max_lon - self.min_lon) * self.aspect_ratio
+        if lat_diff == 0: lat_diff = 1.0
+        if lon_diff == 0: lon_diff = 1.0
+        
+        self.scale = min((self.width - 200 - 2 * self.padding) / lon_diff,
+                         (self.height - 2 * self.padding) / lat_diff)
+                         
+        self.center_x = (self.width - 200) / 2
+        self.center_y = self.height / 2
+        self.mid_lat = (self.min_lat + self.max_lat) / 2
+        self.mid_lon = (self.min_lon + self.max_lon) / 2
+
+        self.grid = SpatialGrid(graph)
+        self.start_node = None
+        self.end_node = None
+        self.click_state = 0 
+        self.mode = "NAVIGATE" 
+        
+        self.zoom = 1.0
+        self.offset_x = 0
+        self.offset_y = 0
+        self.last_mouse_x = 0
+        self.last_mouse_y = 0
+
+        self.root = tk.Tk()
+        self.root.title("RouteMaster - Traffic Control")
+        
+        self.main_frame = tk.Frame(self.root, bg=self.bg_color)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.canvas = tk.Canvas(self.main_frame, width=self.width-200, height=self.height, bg=self.bg_color, highlightthickness=0)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.hud = HudRenderer(self.canvas, self.width, self.height)
+
+        self.sidebar = tk.Frame(self.main_frame, width=200, bg="#2a2a2a")
+        self.sidebar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.setup_sidebar()
+
+        self.canvas.bind("<Button-1>", self.handle_click)
+        self.canvas.bind("<Button-3>", self.start_pan)
+        self.canvas.bind("<B3-Motion>", self.do_pan)
+        self.canvas.bind("<MouseWheel>", self.do_zoom)
+        self.canvas.bind("<Button-4>", self.do_zoom)
+        self.canvas.bind("<Button-5>", self.do_zoom)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+
+        # Tooltip
+        self.tooltip = tk.Label(self.canvas, text="", bg="#333333", fg="#00ffff", 
+                                font=("Arial", 10), padx=5, pady=2, relief=tk.SOLID, borderwidth=1)
+        self.tooltip.place(x=-100, y=-100)
+
     def fit_to_bounds(self, min_lat, max_lat, min_lon, max_lon):
         """ Auto-zooms and pans to fit the defined geographic bounds with padding. """
         if min_lat >= max_lat or min_lon >= max_lon: return
+        
+        # Reset Zoom/Pan state
+        self.zoom = 1.0
+        self.offset_x = 0
+        self.offset_y = 0
         
         # Determine strict bounds in pixels would require current scale
         # Instead, we calculate required scale to fit into width/height
@@ -61,9 +127,6 @@ class MapVisualizer:
         # Geo dimensions
         lat_span = max_lat - min_lat
         lon_span = max_lon - min_lon
-        
-        # Add simpler padding
-        padding_factor = 1.2
         
         # Target scale
         target_scale_x = (self.width * 0.8) / (lon_span * self.aspect_ratio) if lon_span > 0 else self.scale
@@ -76,128 +139,92 @@ class MapVisualizer:
         center_lon = (min_lon + max_lon) / 2
         
         # Offset calculation
-        # x = center_x + (lon - mid_lon)*ar*scale + off_x
-        # We want x = center_x for the center point.
-        # => (center_lon - mid_lon)*ar*scale + off_x = 0
         self.offset_x = -((center_lon - self.mid_lon) * self.aspect_ratio * self.scale)
         self.offset_y = -(-(center_lat - self.mid_lat) * self.scale)
         
         self.draw_map()
-        lat_diff = self.max_lat - self.min_lat
-        lon_diff = (self.max_lon - self.min_lon) * self.aspect_ratio
-        if lat_diff == 0: lat_diff = 1
-        if lon_diff == 0: lon_diff = 1
-        self.scale = min((self.width - 200 - 2 * self.padding) / lon_diff, # Oduzimamo 200 za sidebar
-                         (self.height - 2 * self.padding) / lat_diff)
-        self.center_x = (self.width - 200) / 2 # Pomičemo centar lijevo zbog sidebara
-        self.center_y = self.height / 2
-        self.mid_lat = (self.min_lat + self.max_lat) / 2
-        self.mid_lon = (self.min_lon + self.max_lon) / 2
 
-        # Stanje
-        self.grid = SpatialGrid(graph) # Spatial Indexing
-        self.hud = HudRenderer(self.canvas, self.width, self.height)
-        self.start_node = None
-        self.end_node = None
-        self.click_state = 0 
-        self.mode = "NAVIGATE" 
+    def create_styled_button(self, parent, text, bg_color, command):
+        btn = tk.Button(
+            parent, text=text, bg=bg_color, fg="white" if bg_color != "#00ccff" and bg_color != "#e39e54" else "black",
+            font=("Segoe UI", 10, "bold"), relief="flat", padx=20, pady=8, cursor="hand2",
+            activebackground=bg_color, activeforeground="white", command=command
+        )
+        btn.pack(fill=tk.X, padx=15, pady=6)
         
-        # Zoom & Pan
-        self.zoom = 1.0
-        self.offset_x = 0
-        self.offset_y = 0
-        self.last_mouse_x = 0
-        self.last_mouse_y = 0
+        # Hover Effect
+        def on_enter(e):
+            btn.config(bg=self.adjust_color_brightness(bg_color, 1.2))
+        def on_leave(e):
+            btn.config(bg=bg_color)
+            
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", on_leave)
+        return btn
 
-        # UI Setup
-        self.root = tk.Tk()
-        self.root.title("RouteMaster - Traffic Control")
-        
-        # Glavni okvir
-        self.main_frame = tk.Frame(self.root, bg=self.bg_color)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Canvas (Lijevo)
-        self.canvas = tk.Canvas(self.main_frame, width=self.width-200, height=self.height, bg=self.bg_color, highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        # Sidebar (Desno)
-        self.sidebar = tk.Frame(self.main_frame, width=200, bg="#2a2a2a")
-        self.sidebar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.setup_sidebar()
-
-        self.canvas.bind("<Button-1>", self.handle_click)
-        self.canvas.bind("<Button-3>", self.start_pan)
-        self.canvas.bind("<B3-Motion>", self.do_pan)
-        self.canvas.bind("<MouseWheel>", self.do_zoom) # Windows
-        self.canvas.bind("<Button-4>", self.do_zoom)   # Linux Scroll Up
-        self.canvas.bind("<Button-5>", self.do_zoom)   # Linux Scroll Down
-        self.canvas.bind("<Motion>", self.on_mouse_move) # Hover
-
-        # Tooltip Label (Initially hidden)
-        self.tooltip = tk.Label(self.canvas, text="", bg="#333333", fg="#00ffff", 
-                                font=("Arial", 10), padx=5, pady=2, relief=tk.SOLID, borderwidth=1)
-        self.tooltip.place(x=-100, y=-100) # Hide off-screen
+    def adjust_color_brightness(self, hex_color, factor):
+        # Simple brightness adjuster
+        r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+        r = min(255, int(r * factor))
+        g = min(255, int(g * factor))
+        b = min(255, int(b * factor))
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def setup_sidebar(self):
-        # Naslov
-        tk.Label(self.sidebar, text="KONTROLA", bg="#2a2a2a", fg="white", font=("Arial", 14, "bold"), pady=20).pack()
+        # Header
+        tk.Label(self.sidebar, text="CONTROLS", bg="#2a2a2a", fg="white", font=("Segoe UI", 14, "bold"), pady=25).pack()
 
-        # Gumbi za modove
-        self.btn_nav = tk.Button(self.sidebar, text="📍 Navigacija", bg="#00ccff", fg="black", font=("Arial", 10, "bold"),
-                                 command=lambda: self.set_mode("NAVIGATE"))
-        self.btn_nav.pack(fill=tk.X, padx=10, pady=5)
+        # Mode Buttons
+        self.btn_nav = self.create_styled_button(self.sidebar, "📍 Navigacija", "#00ccff", lambda: self.set_mode("NAVIGATE"))
+        self.btn_jam = self.create_styled_button(self.sidebar, "⚠️ Stvori Gužvu", "#ff8800", lambda: self.set_mode("JAM"))
+        self.btn_block = self.create_styled_button(self.sidebar, "⛔ Zatvori Cestu", "#ff3333", lambda: self.set_mode("BLOCK"))
 
-        self.btn_jam = tk.Button(self.sidebar, text="⚠️ Stvori Gužvu", bg="#ff8800", fg="black", font=("Arial", 10, "bold"),
-                                 command=lambda: self.set_mode("JAM"))
-        self.btn_jam.pack(fill=tk.X, padx=10, pady=5)
+        # Spacer
+        tk.Label(self.sidebar, bg="#2a2a2a").pack(pady=10)
 
-        self.btn_block = tk.Button(self.sidebar, text="⛔ Zatvori Cestu", bg="#ff0000", fg="white", font=("Arial", 10, "bold"),
-                                   command=lambda: self.set_mode("BLOCK"))
-        self.btn_block.pack(fill=tk.X, padx=10, pady=5)
-
-        tk.Label(self.sidebar, text="----------------", bg="#2a2a2a", fg="#555").pack(pady=10)
-
-        self.btn_reset = tk.Button(self.sidebar, text="🔄 Resetiraj Promet", bg="#444", fg="white",
-                                   command=self.reset_traffic)
-        self.btn_reset.pack(fill=tk.X, padx=10, pady=5)
+        # Reset
+        self.btn_reset = self.create_styled_button(self.sidebar, "🔄 Resetiraj Promet", "#555555", self.reset_traffic)
         
+        # Info Panel
         self.lbl_info = tk.Label(self.sidebar, text="Mod: NAVIGACIJA\nKlikni na mapu za start.", 
-                                 bg="#2a2a2a", fg="#aaa", justify=tk.LEFT, wraplength=180)
-        self.lbl_info.pack(side=tk.BOTTOM, pady=20, padx=10)
+                                 bg="#2a2a2a", fg="#aaaaaa", justify=tk.LEFT, wraplength=200, font=("Segoe UI", 9))
+        self.lbl_info.pack(side=tk.BOTTOM, pady=30, padx=15, anchor="w")
 
-        # Tražilica
-        tk.Label(self.sidebar, text="PRETRAGA ULICE", bg="#2a2a2a", fg="white", font=("Arial", 10, "bold"), pady=10).pack()
+        # Search
+        tk.Label(self.sidebar, text="PRETRAGA ULICE", bg="#2a2a2a", fg="white", font=("Segoe UI", 10, "bold"), pady=10).pack()
         self.entry_search = tk.Entry(
             self.sidebar, 
-            bg="#444", fg="white", 
+            bg="#3a3a3a", fg="white", 
             insertbackground="white", 
-            relief=tk.FLAT, font=("Arial", 10)
+            relief="flat", font=("Segoe UI", 11)
         )
-        self.entry_search.pack(fill=tk.X, padx=10)
-        tk.Button(self.sidebar, text="Traži", bg="#555", fg="white", command=self.search_street).pack(fill=tk.X, padx=10, pady=5)
-
-        tk.Label(self.sidebar, text="----------------", bg="#2a2a2a", fg="#555").pack(pady=10)
-
-        # Upute
-        # tk.Label(self.sidebar, text="NAVIGACIJA", bg="#2a2a2a", fg="white", font=("Arial", 10, "bold")).pack()
-        # self.list_instructions = tk.Listbox(self.sidebar, bg="#111", fg="#00ff00", height=10, font=("Consolas", 8))
-        # self.list_instructions.pack(fill=tk.BOTH, padx=5, pady=5)
+        self.entry_search.pack(fill=tk.X, padx=15, ipady=5) # ipady for inner padding
         
-        tk.Label(self.sidebar, text="(Upute na ekranu)", bg="#2a2a2a", fg="#777", font=("Arial", 8)).pack(pady=5)
-        
-        
-        tk.Button(self.sidebar, text="💾 Export Rute", bg="#444", fg="white", command=self.export_route).pack(fill=tk.X, padx=10, pady=5)
+        self.create_styled_button(self.sidebar, "🔍 Traži", "#444444", self.search_street)
 
-        tk.Label(self.sidebar, text="----------------", bg="#2a2a2a", fg="#555").pack(pady=10)
+        # Spacer
+        tk.Label(self.sidebar, bg="#2a2a2a").pack(pady=10)
+
+        # Instructions Placeholder
+        tk.Label(self.sidebar, text="(Upute na mapi)", bg="#2a2a2a", fg="#777", font=("Segoe UI", 9, "italic")).pack(pady=5)
+        
+        # Export
+        self.create_styled_button(self.sidebar, "💾 Export Rute", "#444444", self.export_route)
+
+        # Spacer
+        tk.Label(self.sidebar, bg="#2a2a2a").pack(pady=10)
         
         # Extras
-        tk.Label(self.sidebar, text="DODATNO", bg="#2a2a2a", fg="white", font=("Arial", 10, "bold")).pack()
+        tk.Label(self.sidebar, text="DODATNO", bg="#2a2a2a", fg="white", font=("Segoe UI", 10, "bold")).pack()
         self.show_pois = tk.BooleanVar(value=False)
-        tk.Checkbutton(self.sidebar, text="Prikaži POI (Škole/D)", variable=self.show_pois, 
-                       bg="#2a2a2a", fg="white", selectcolor="#444", command=self.draw_map).pack(anchor="w", padx=10)
+        
+        # Checkbox Styling
+        chk = tk.Checkbutton(self.sidebar, text="Prikaži POI (Škole/D)", variable=self.show_pois, 
+                       bg="#2a2a2a", fg="#dddddd", selectcolor="#2a2a2a", activebackground="#2a2a2a", activeforeground="white",
+                       font=("Segoe UI", 9), command=self.draw_map)
+        chk.pack(anchor="w", padx=15, pady=5)
                        
-        tk.Button(self.sidebar, text="🚗 Animiraj Promet", bg="#e39e54", fg="black", command=self.start_animation).pack(fill=tk.X, padx=10, pady=5)
+        self.create_styled_button(self.sidebar, "🚗 Animiraj Promet", "#e39e54", self.start_animation)
 
     def set_mode(self, mode):
         self.mode = mode
@@ -271,7 +298,7 @@ class MapVisualizer:
                 v = self.graph.nodes[v_id]
                 vx, vy = self.to_screen(v.lat, v.lon)
                 
-                # Odredi stil (je li jammed/blocked ili normalan)
+                # Determine style based on status
                 status = edge.get('status', None)
                 rtype = edge.get('type', 'unknown')
                 
@@ -282,7 +309,7 @@ class MapVisualizer:
                 else:
                     style = ROAD_STYLES.get(rtype, ROAD_STYLES['unknown'])
                 
-                # Check One-Way (Simple detection)
+                # Check One-Way
                 is_oneway = True
                 if v_id in self.graph.edges:
                     for e_back in self.graph.edges[v_id]:
@@ -295,81 +322,64 @@ class MapVisualizer:
         all_edges.sort(key=lambda x: x[0])
         for w, c, ux, uy, vx, vy, is_oneway in all_edges:
             self.canvas.create_line(ux, uy, vx, vy, fill=c, width=w, capstyle=tk.ROUND)
-            
-            # Draw Arrow for One-Way Streets
-            if is_oneway and self.scale > 2.0: # Only draw if zoomed in enough
-                # Center point
-                mx, my = (ux+vx)/2, (uy+vy)/2
-                # Direction vector
-                dx, dy = vx-ux, vy-uy
-                length = math.sqrt(dx*dx + dy*dy)
-                if length > 0:
-                    dx, dy = dx/length, dy/length
-                    # Perpendicular vector
-                    px, py = -dy, dx
-                    
-                    arrow_size = 4
-                    # Tip
-                    ax, ay = mx + dx*arrow_size, my + dy*arrow_size
-                    # Base corners
-                    bx, by = mx - dx*arrow_size + px*arrow_size*0.6, my - dy*arrow_size + py*arrow_size*0.6
-                    cx, cy = mx - dx*arrow_size - px*arrow_size*0.6, my - dy*arrow_size - py*arrow_size*0.6
-                    
-                    self.canvas.create_polygon(ax, ay, bx, by, cx, cy, fill="#aaaaaa", outline="")
 
         # POIs
         if self.show_pois.get():
             self.draw_pois()
 
-        # Render HUD elements via Helper
-        self.hud.draw_legend()
 
-        # Speed/Limit HUD
+
         if not hasattr(self, 'anim_running') or not self.anim_running:
             self.hud.draw_speedometer(0, 50) 
             
-        # Instruction HUD
         if hasattr(self, 'current_instruction_text'):
             self.hud.draw_navigation(self.current_instruction_text)
 
-        # Ako imamo rutu, ponovno je nacrtaj preko svega
+        # Draw active route
         if self.start_node and self.end_node and self.click_state == 2:
-            self.recalculate_route()
+            # Crtanje markera
+            sx, sy = self.to_screen(self.graph.nodes[self.start_node].lat, self.graph.nodes[self.start_node].lon)
+            ex, ey = self.to_screen(self.graph.nodes[self.end_node].lat, self.graph.nodes[self.end_node].lon)
+            self.canvas.create_oval(sx-6, sy-6, sx+6, sy+6, fill="#00ff00", outline="white", width=2, tags="marker")
+            self.canvas.create_oval(ex-6, ey-6, ex+6, ey+6, fill="#ff0000", outline="white", width=2, tags="marker")
+            
+            if hasattr(self, 'current_route_path') and self.current_route_path:
+                self.draw_route_line(self.current_route_path)
+                time_sec = self.calculate_time(self.current_route_path)
+                dist = getattr(self, 'current_route_dist', 0)
+                self.draw_dashboard(dist, int(time_sec // 60), int(time_sec % 60))
+            else:
+                 self.canvas.create_text(100, 50, text="RUTA BLOKIRANA!", fill="red", font=("Arial", 16, "bold"), tags="dashboard")
+
+        # Render HUD elements LAST so they are on top
+        self.hud.draw_legend()
+        
+        # Ensure HUD is on top of everything
+        self.canvas.tag_raise("legend")
+        self.canvas.tag_raise("hud_speed")
+        self.canvas.tag_raise("hud_instr")
 
     def recalculate_route(self):
         """ Ponovno računa rutu s trenutnim stanjem prometa. """
         path, dist = a_star(self.graph, self.start_node, self.end_node)
         
-        self.canvas.delete("route")
-        self.canvas.delete("dashboard")
-        self.canvas.delete("marker")
+        self.current_route_path = path
+        self.current_route_dist = dist
         
-        # Crtanje markera
-        sx, sy = self.to_screen(self.graph.nodes[self.start_node].lat, self.graph.nodes[self.start_node].lon)
-        ex, ey = self.to_screen(self.graph.nodes[self.end_node].lat, self.graph.nodes[self.end_node].lon)
-        self.canvas.create_oval(sx-6, sy-6, sx+6, sy+6, fill="#00ff00", outline="white", width=2, tags="marker")
-        self.canvas.create_oval(ex-6, ey-6, ex+6, ey+6, fill="#ff0000", outline="white", width=2, tags="marker")
-
         if path:
-            self.draw_route_line(path)
-            time_sec = self.calculate_time(path)
-            self.draw_dashboard(dist, int(time_sec // 60), int(time_sec % 60))
-            
-            # Auto-Fit to Route
+            # Auto-Fit to Route (which will call draw_map)
             lats = [self.graph.nodes[n].lat for n in path]
             lons = [self.graph.nodes[n].lon for n in path]
             if lats and lons:
                 self.fit_to_bounds(min(lats), max(lats), min(lons), max(lons))
-            
-            # Generiraj instrukcije (i dalje ih generiramo za export)
+            else:
+                self.draw_map()
+                
+            # Generiraj instrukcije
             instructions = generate_instructions(self.graph, path)
-            self.current_instructions = instructions # Save for export
-            self.current_route_path = path # Save for animation
+            self.current_instructions = instructions 
         else:
-            # Ako je ruta blokirana
-            self.canvas.create_text(100, 50, text="RUTA BLOKIRANA!", fill="red", font=("Arial", 16, "bold"), tags="dashboard")
-            # self.list_instructions.delete(0, tk.END)
-            # self.list_instructions.insert(tk.END, "Ruta nije pronađena!")
+            self.draw_map()
 
     def export_route(self):
         if not hasattr(self, 'current_instructions') or not self.current_instructions:
@@ -395,11 +405,14 @@ class MapVisualizer:
 
     def reset_traffic(self):
         self.simulator.reset_all()
-        self.draw_map() # Osvježi prikaz
+        if self.start_node and self.end_node and self.click_state == 2:
+            self.recalculate_route()
+        else:
+            self.draw_map()
 
-    # --- NOVO: Detekcija klika na cestu (Geometrija) ---
+    # --- Geometry & Interaction ---
     def find_nearest_edge(self, ex, ey):
-        """ Pronalazi najbližu cestu (rub) kliku miša koristeći Spatial Grid. """
+        """ Finds the nearest road edge using the Spatial Grid. """
         lat, lon = self.screen_to_geo(ex, ey)
         candidates = self.grid.query(lat, lon)
         
@@ -484,7 +497,7 @@ class MapVisualizer:
 
     def handle_click(self, event):
         if self.mode == "NAVIGATE":
-            # Stara logika za rutiranje
+            # Routing Logic
             node = self.find_nearest_node(event.x, event.y)
             if not node: return
             nx, ny = self.to_screen(self.graph.nodes[node].lat, self.graph.nodes[node].lon)
@@ -517,8 +530,11 @@ class MapVisualizer:
                     self.simulator.block_road(u, v)
                     print(f"Cesta zatvorena: {u}-{v}")
                 
-                # Osvježi mapu (ovo će prebojati cestu)
-                self.draw_map()
+                # Ako imamo aktivnu rutu, preračunaj je (da izbjegne gužvu)
+                if self.start_node and self.end_node and self.click_state == 2:
+                    self.recalculate_route()
+                else:
+                    self.draw_map()
 
     def search_street(self):
         query = self.entry_search.get().lower().strip()
@@ -626,6 +642,7 @@ class MapVisualizer:
             self.canvas.coords(self.car_id, x-5, y-5, x+5, y+5)
             
             # --- Dynamic HUD Updates ---
+            hud_text = "Navigacija..." 
             # 1. Calculate progress to find current edge/speed limit
             total_steps = len(self.anim_path)
             # Find which segment we are on
@@ -743,7 +760,8 @@ class MapVisualizer:
                  hud_text = f"Vozite {int(next_turn_dist)}m do cilja"
             
             self.canvas.delete("hud_instr")
-            self.draw_instruction_hud(hud_text)
+
+            self.hud.draw_navigation(hud_text)
             
             self.anim_index += 1
             self.root.after(50, self.animate_step) # Slower delay for visibility

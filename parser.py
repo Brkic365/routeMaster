@@ -5,26 +5,24 @@ from collections import deque
 
 def keep_only_largest_component(graph):
     """
-    Zadržava samo najveću grupu povezanih ulica.
+    Retains only the largest connected component of the road network.
     """
-    print("Filtriranje izoliranih otoka...")
+    print("Filtering isolated islands...")
     
-    # 1. Pronađi sve komponente
+    # 1. Find all components
     visited = set()
     largest_component = set()
     
     for node_id in graph.nodes:
         if node_id not in visited:
             current_component = set()
-            # Koristimo listu kao stack za DFS/BFS
+            # Use list as stack for DFS
             stack = [node_id]
             visited.add(node_id)
             current_component.add(node_id)
             
             while stack:
                 curr = stack.pop()
-                # Pazi: get_neighbors može vratiti edges koji pokazuju na nepostojeće čvorove
-                # ako parser nije savršen, ali ovdje je bitno samo traverseanje
                 for edge in graph.get_neighbors(curr):
                     neighbor = edge['to']
                     if neighbor in graph.nodes and neighbor not in visited:
@@ -35,10 +33,9 @@ def keep_only_largest_component(graph):
             if len(current_component) > len(largest_component):
                 largest_component = current_component
 
-    print(f"Zadržavam {len(largest_component)} od {len(graph.nodes)} čvorova.")
+    print(f"Retained {len(largest_component)} out of {len(graph.nodes)} nodes.")
     
-    # 2. Obriši čvorove koji nisu u glavnoj komponenti
-    # Moramo napraviti listu ključeva jer ne smijemo mijenjati dict dok iteriramo
+    # 2. Delete nodes not in the main component
     all_nodes = list(graph.nodes.keys())
     for n in all_nodes:
         if n not in largest_component:
@@ -46,11 +43,10 @@ def keep_only_largest_component(graph):
             if n in graph.edges:
                 del graph.edges[n]
 
-    # 3. KLJUČNI POPRAVAK: Očisti "viseće" veze (dangling edges)
-    # Prolazimo kroz preostale čvorove i mičemo veze prema obrisanim čvorovima
+    # 3. Clean dangling edges
     for n in largest_component:
         if n in graph.edges:
-            # Zadrži samo one veze gdje odredište ('to') još uvijek postoji
+            # Keep only edges where destination exists
             original_edges = graph.edges[n]
             cleaned_edges = [
                 edge for edge in original_edges 
@@ -60,12 +56,12 @@ def keep_only_largest_component(graph):
 
 
 def load_osm_data(filepath):
-    print(f"Parsiranje: {filepath}...")
+    print(f"Parsing: {filepath}...")
     try:
         tree = ET.parse(filepath)
         root = tree.getroot()
     except Exception as e:
-        print(f"Greška: {e}")
+        print(f"Error: {e}")
         return None
 
     graph = Graph()

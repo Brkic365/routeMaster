@@ -4,13 +4,12 @@ from utils import calculate_turn_dir, haversine_distance
 
 def reconstruct_path(previous_nodes, start, end):
     """
-    Vraća listu ID-ova čvorova od starta do cilja.
-    Radi 'backtracking' od cilja prema startu.
+    Reconstructs the path from start to end using the came_from map.
+    Returns a list of node IDs.
     """
     path = []
     current_node = end
     
-    # Ako cilj nije posjećen (nema ga u previous), nema puta
     if current_node not in previous_nodes:
         return []
 
@@ -18,7 +17,7 @@ def reconstruct_path(previous_nodes, start, end):
         path.append(current_node)
         current_node = previous_nodes[current_node]
     
-    path.reverse() # Okreni listu (Cilj->Start u Start->Cilj)
+    path.reverse() 
     
     if path[0] != start:
         return []
@@ -96,31 +95,30 @@ def a_star(graph, start_id, end_id):
     return [], float('infinity')
 
 def generate_instructions(graph, path):
-    """ Generira tekstualne upute za navigaciju. """
+    """ Generates turn-by-turn navigation instructions from a node path. """
     if not path or len(path) < 2:
-        return ["Stigli ste na odredište."]
+        return ["You have reached your destination."]
         
     instructions = []
     current_street = None
     segment_dist = 0
     
-    # helper da nađemo ime ulice
     def get_street_name(u, v):
         if u in graph.edges:
             for e in graph.edges[u]:
                 if e['to'] == v:
-                    return e.get('name', 'Nepoznata ulica')
-        return "Nepoznata ulica"
+                    return e.get('name', 'Unknown Road')
+        return "Unknown Road"
 
-    # Prva ulica
+    # Initial street
     start_street = get_street_name(path[0], path[1])
     current_street = start_street
-    instructions.append(f"Krenite ulicom {start_street}")
+    instructions.append(f"Start on {start_street}")
     
     for i in range(len(path) - 1):
         u, v = path[i], path[i+1]
         
-        # Dohvati udaljenost
+        # Get distance
         dist = 0
         if u in graph.edges:
             for e in graph.edges[u]:
@@ -131,14 +129,14 @@ def generate_instructions(graph, path):
         name = get_street_name(u, v)
         
         if name != current_street:
-            # Nova instrukcija
-            dist_text = f"{int(segment_dist)}m" if segment_dist > 1000 else f"{int(segment_dist)}m"
-            instructions.append(f"Vozite {dist_text}, zatim skrenite u {name}")
+            # New Instruction
+            dist_text = f"{int(segment_dist)}m"
+            instructions.append(f"Drive {dist_text}, then turn onto {name}")
             current_street = name
             segment_dist = 0
         
         segment_dist += dist
         
-    # Zadnja dionica
-    instructions.append(f"Vozite {int(segment_dist)}m do cilja.")
+    # Final segment
+    instructions.append(f"Drive {int(segment_dist)}m to destination.")
     return instructions

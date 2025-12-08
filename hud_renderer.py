@@ -3,7 +3,7 @@ import tkinter as tk
 class HudRenderer:
     """
     Handles drawing of Head-Up Display (HUD) elements on the visualizer canvas.
-    separates UI rendering logic from the main application logic.
+    Separates UI rendering logic from the main application logic.
     """
     def __init__(self, canvas, width, height):
         self.canvas = canvas
@@ -12,7 +12,7 @@ class HudRenderer:
 
     def draw_legend(self):
         """ Draws the map legend in the bottom-right corner. """
-        w, h = 180, 130
+        w, h = 180, 160
         x = self.width - 200 - w - 20  # Offset from sidebar
         y = self.height - h - 20
         

@@ -4,20 +4,20 @@ from visualizer import MapVisualizer
 OSM_FILE = "mapa_trg.osm"
 
 def main():
-    print("Učitavam podatke...")
+    print("Loading map data...")
     graph = load_osm_data(OSM_FILE)
     
     if not graph or len(graph.nodes) < 2:
-        print("Neuspješno učitavanje grafa.")
+        print("Failed to load graph data.")
         return
 
-    print("Pokrećem vizualizaciju...")
+    print("Launching visualizer...")
     viz = MapVisualizer(graph)
     
-    # Prvo nacrtamo mapu
+    # Draw initial map state
     viz.draw_map()
     
-    # Onda prepustimo kontrolu korisniku
+    # Hand over control to UI
     viz.show()
 
 if __name__ == "__main__":

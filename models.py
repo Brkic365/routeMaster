@@ -28,7 +28,7 @@ class Graph:
         self.edges[id] = []
 
     def add_edge(self, u, v, weight, road_type="unknown", name="Unknown Road"):
-        # Dodajemo usmjereni rub. Za dvosmjernu ulicu pozivamo ovo dvaput.
+        # Add directed edge. For bidirectional roads, this is called twice.
         if u in self.nodes and v in self.nodes:
             self.edges[u].append({'to': v, 
                                   'weight': weight, 
