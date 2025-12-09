@@ -1,8 +1,9 @@
 import heapq
 import math
 from utils import calculate_turn_dir, haversine_distance
+from models import Graph, Node
 
-def reconstruct_path(previous_nodes, start, end):
+def reconstruct_path(previous_nodes: dict[str, str | None], start: str, end: str) -> list[str]:
     """
     Reconstructs the path from start to end using the came_from map.
     Returns a list of node IDs.
@@ -24,15 +25,16 @@ def reconstruct_path(previous_nodes, start, end):
         
     return path
 
-def a_star(graph, start_id, end_id):
+def a_star(graph: Graph, start_id: str, end_id: str) -> tuple[list[str], float]:
     """
     A* algorithm with traffic awareness and Turn Costs.
     Penalty is added for sharp turns to encourage smoother paths.
     """
-    pq = [(0, start_id)]
+    # Priority Queue tuple: (f_score, node_id)
+    pq = [(0.0, start_id)]
     
     g_score = {node: float('infinity') for node in graph.nodes}
-    g_score[start_id] = 0
+    g_score[start_id] = 0.0
     
     came_from = {node: None for node in graph.nodes}
     
@@ -43,10 +45,11 @@ def a_star(graph, start_id, end_id):
             return reconstruct_path(came_from, start_id, end_id), g_score[end_id]
             
         # Optimization: Lazy deletion
-        if current_f > g_score[current_node_id] + haversine_distance(graph.nodes[current_node_id].lat, graph.nodes[current_node_id].lon, graph.nodes[end_id].lat, graph.nodes[end_id].lon) + 1000:
-             # Heuristic check approximation or just comparing g_score (if we stored f_score)
-             # Better: if g_score[current] is much smaller than what we popped (if we stored (f, g, u))
-             pass
+        current_h = haversine_distance(graph.nodes[current_node_id].lat, graph.nodes[current_node_id].lon, 
+                                     graph.nodes[end_id].lat, graph.nodes[end_id].lon)
+                                     
+        if current_f > g_score[current_node_id] + current_h + 1e-9: # Epsilon for float comparisons
+            continue
 
         u_node = graph.nodes[current_node_id]
         parent_id = came_from.get(current_node_id)
@@ -113,7 +116,7 @@ def generate_instructions(graph, path):
     # Initial street
     start_street = get_street_name(path[0], path[1])
     current_street = start_street
-    instructions.append(f"Start on {start_street}")
+    instructions.append(f"Head on {start_street}")
     
     for i in range(len(path) - 1):
         u, v = path[i], path[i+1]
@@ -126,17 +129,24 @@ def generate_instructions(graph, path):
                     dist = e['weight']
                     break
         
+        # Safety check for infinite distances (Crash prevention)
+        if math.isinf(dist) or math.isnan(dist) or dist > 1e9:
+             return ["Route blocked. Destination unreachable."]
+        
         name = get_street_name(u, v)
         
         if name != current_street:
             # New Instruction
             dist_text = f"{int(segment_dist)}m"
-            instructions.append(f"Drive {dist_text}, then turn onto {name}")
+            instructions.append(f"Go {dist_text}, then turn onto {name}")
             current_street = name
             segment_dist = 0
         
         segment_dist += dist
         
-    # Final segment
-    instructions.append(f"Drive {int(segment_dist)}m to destination.")
+    # Final segment safety check
+    if math.isinf(segment_dist) or math.isnan(segment_dist):
+         return ["Route blocked. Destination unreachable."]
+
+    instructions.append(f"Go {int(segment_dist)}m to destination.")
     return instructions

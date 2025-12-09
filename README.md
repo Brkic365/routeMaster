@@ -1,79 +1,66 @@
-# RouteMaster 🚗🗺️
+# RouteMaster - Traffic Simulation & Navigation Engine
 
-**RouteMaster** is a modern Python-based traffic simulation and navigation application. It visualizes OpenStreetMap (OSM) data, calculates optimal routes using the A* algorithm, and provides a rich set of interactive features including real-time traffic simulation, turn-by-turn navigation, and POI visualization.
+**RouteMaster** is a high-performance Python-based traffic simulation and navigation system designed for real-time pathfinding on OpenStreetMap (OSM) data. It features a custom **Spatial Hashing** engine for O(1) queries, dynamic A* rerouting, and an interactive visualizations dashboard.
 
-![RouteMaster Screenshot](https://via.placeholder.com/800x450.png?text=RouteMaster+Screenshot) 
-*(Note: Replace with an actual screenshot if available)*
+![RouteMaster Navigation Mode](https://via.placeholder.com/800x400.png?text=RouteMaster+Visualization) *Representative Image*
 
-## ✨ Key Features
+## 🚀 Key Features
 
-### 🖥️ Interactive Visualization
-- **Cyberpunk / Neon Night Theme:** A visually striking dark mode with neon accents for roads and routes.
-- **Zoom & Pan:** Fully interactive map control using mouse wheel and right-click drag.
-- **Instant Interaction:** Optimized with a **Spatial Grid** system for high performance even on large maps.
+*   **Advanced Pathfinding**: Implementation of the **A* Algorithm** with "Lazy Deletion" and dynamic weight adjustments for traffic jams.
+*   **Spatial Hashing**: Custom `SpatialGrid` class enabling efficient O(1) spatial lookups for roads and interactions, replacing slow iterative searches.
+*   **Live Traffic Simulation**:
+    *   **Traffic Jams**: Interactively create congestion zones that slow down routing agents.
+    *   **Road Blocks**: Dynamically close roads, triggering immediate path recalculation (Live Rerouting).
+*   **Geographic Projection**: Accurate mapping of Latitude/Longitude to screen coordinates with Zoom/Pan capabilities.
+*   **Interactive HUD**:
+    *   Real-time Speedometer & Turn-by-Turn Navigation.
+    *   Dynamic Dashboard for route statistics (Time/Distance).
+    *   Map Legend & POI Visualization (Schools, Shops, etc.).
 
-### 📍 Navigation & Routing
-- **A* Algorithm:** Efficiently finds the shortest path between two points.
-- **Smart HUD:** Heads-Up Display showing:
-  - **Next Turn Instructions:** Dynamic "Turn Left/Right in X meters" updates.
-  - **Speedometer:** Real-time speed and limit display.
-  - **Street Name:** Current street name overlay.
-- **Export Route:** Save detailed textual directions to a `.txt` file.
+## 🛠️ Tech Stack
 
-### 🚗 Traffic Simulation
-- **Dynamic Traffic:** "Animiraj Promet" mode visualizes a car driving along the route.
-- **Traffic Control:** Manually create **Traffic Jams** (Orange) or **Block Roads** (Red) to test rerouting.
-- **Points of Interest (POI):** Toggle visualization for Schools, Shops, and Parks.
+*   **Language**: Python 3.9+
+*   **GUI Framework**: Tkinter (Canvas-based rendering)
+*   **Data Format**: OpenStreetMap XML (.osm)
+*   **Algorithms**: A*, Spatial Hashing, Queue/PriorityQueue.
 
-## 🛠️ Technology Stack
-- **Language:** Python 3.x
-- **GUI Framework:** Tkinter (Standard Library)
-- **Data Source:** OpenStreetMap (`.osm` XML format)
-- **Algorithms:** A* (Pathfinding), Haversine (Distance), Cross Product (Geometry/Turn Direction)
-- **Zero External Dependencies:** Built entirely using Python's standard library.
+## 📦 Installation & Usage
 
-## 🚀 How to Run
-
-1.  **Clone the repository:**
+1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/Brkic365/routeMaster.git
-    cd routeMaster
+    git clone https://github.com/yourusername/routemaster.git
+    cd routemaster
     ```
 
-2.  **Prepare Map Data:**
-    - Ensure you have a valid `mapa.osm` file in the project directory.
-    - *Note: Included map files like `mapa.osm` or `mapa_sava.osm` can be used.*
+2.  **Ensure Map Data**:
+    Place your `.osm` file (e.g., `mapa_trg.osm`) in the root directory. Update `config.py` or `main.py` if the filename differs.
 
-3.  **Run the application:**
+3.  **Run the Application**:
     ```bash
     python main.py
     ```
 
 ## 🎮 Controls
 
-| Action | Control |
-| :--- | :--- |
-| **Select Start/End** | Left Click on map |
-| **Zoom** | Mouse Wheel |
-| **Pan** | Right Click + Drag |
-| **Hover** | Mouse over streets/POIs for details |
-| **Search** | Type street name in Sidebar + "Traži" |
-| **Animation** | Click "Animiraj Promet" in Sidebar |
+| Mode | Action | Description |
+| :--- | :--- | :--- |
+| **Navigate** | Left Click | Set **Start** (Green) and **End** (Red) points for routing. |
+| **Traffic Jam** | Left Click on Road | Creates a traffic jam (Orange), increasing travel cost x5. |
+| **Block Road** | Left Click on Road | Blocks the road (Red), forcing a reroute. |
+| **Map View** | Right Click + Drag | Pan the map view. |
+| **Zoom** | Scroll Wheel | Zoom in/out. |
 
 ## 📂 Project Structure
 
-- `main.py`: Entry point of the application.
-- `visualizer.py`: Handles all GUI, drawing, and interactive logic (Tkinter).
-- `algorithms.py`: Pathfinding (A*) and instruction generation logic.
-- `parser.py`: XML parsing of OSM data.
-- `models.py`: Data structures for Graph, Nodes, Edges, and POIs.
-- `simulation.py`: Traffic interaction logic (jams/blocks).
-- `spatial.py`: Spatial Grid optimization for fast queries.
-- `utils.py`: Geometry and math helper functions.
-
-## 📝 License
-
-This project is open-source and available for educational purposes.
+*   `main.py`: Entry point.
+*   `visualizer.py`: Core GUI logic, rendering engine, and animation loop.
+*   `algorithms.py`: A* implementation and instruction generation.
+*   `spatial.py`: Spatial Hashing implementation for optimization.
+*   `models.py`: Data structures (Node, Edge, Graph, POI).
+*   `config.py`: Configuration text, colors, and speed limits.
+*   `hud_renderer.py`: Heads-Up Display (HUD) drawing logic.
+*   `utils.py`: Helper functions (Geo-distance, geometry).
 
 ---
-*Created by [Brkic365](https://github.com/Brkic365)*
+*Created by [Antonio Brkic](https://github.com/Brkic365)[Francesco Marko Livaic](https://github.com/markolivaic)*
+*Developed for Advanced Algorithms Class / Professional Portfolio.*

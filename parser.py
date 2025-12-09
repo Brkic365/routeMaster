@@ -3,11 +3,10 @@ from models import Graph, POI
 from utils import haversine_distance
 from collections import deque
 
-def keep_only_largest_component(graph):
+def keep_only_largest_component(graph: Graph):
     """
-    Retains only the largest connected component of the road network.
+    Retains only the largest connected component of the road network to prevent routing errors.
     """
-    print("Filtering isolated islands...")
     
     # 1. Find all components
     visited = set()

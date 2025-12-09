@@ -13,10 +13,13 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 
     return R * c
 
-def calculate_turn_dir(lat1, lon1, lat2, lon2, lat3, lon3):
+def calculate_turn_dir(lat1: float, lon1: float, lat2: float, lon2: float, lat3: float, lon3: float) -> str:
     """
     Calculates turn direction (Left/Right) based on three points:
     P1->P2->P3 using cross product.
+    
+    Returns:
+        str: 'left', 'right', or 'straight'
     """
     # Vectors P1->P2 (u) and P2->P3 (v)
     
@@ -35,8 +38,24 @@ def calculate_turn_dir(lat1, lon1, lat2, lon2, lat3, lon3):
     threshold = 0.000001
     
     if cross_product > threshold:
-        return "lijevo"
+        return "left"
     elif cross_product < -threshold:
-        return "desno"
+        return "right"
     else:
-        return "ravno"
+        return "straight"
+
+def rotate_point(x: float, y: float, cx: float, cy: float, angle_rad: float) -> tuple[float, float]:
+    """ Rotates point (x,y) around center (cx,cy) by angle_rad. """
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    
+    # Translate to origin
+    tx = x - cx
+    ty = y - cy
+    
+    # Rotate
+    rx = tx * cos_a - ty * sin_a
+    ry = tx * sin_a + ty * cos_a
+    
+    # Translate back
+    return rx + cx, ry + cy

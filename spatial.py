@@ -2,7 +2,12 @@ from models import Graph
 import math
 
 class SpatialGrid:
-    def __init__(self, graph: Graph, rows=50, cols=50):
+    """
+    A Spatial Hash Grid for efficient 2D spatial queries.
+    Maps geographic coordinates (lat, lon) to a grid of cells (buckets).
+    Allows O(1) average time complexity for finding nearby edges.
+    """
+    def __init__(self, graph: Graph, rows: int = 50, cols: int = 50):
         self.graph = graph
         self.rows = rows
         self.cols = cols
@@ -61,7 +66,7 @@ class SpatialGrid:
             self.grid[(r, c)] = []
         self.grid[(r, c)].append((u, v))
 
-    def query(self, lat, lon):
+    def query(self, lat: float, lon: float) -> list:
         """ Returns a list of candidate edges in the cell around specific lat, lon. """
         r, c = self._get_cell(lat, lon)
         candidates = []
@@ -76,3 +81,29 @@ class SpatialGrid:
                         candidates.extend(self.grid[(nr, nc)])
         
         return candidates
+
+    def query_bbox(self, min_lat: float, max_lat: float, min_lon: float, max_lon: float) -> set:
+        """ Returns a set of unique edge tuples found in the grid cells covered by the bounding box. """
+        
+        # Determine grid index ranges
+        r_min, c_min = self._get_cell(min_lat, min_lon)
+        r_max, c_max = self._get_cell(max_lat, max_lon)
+        
+        # Ensure correct ordering (lat increases with index or not depending on implementation, 
+        # but _get_cell handles that logic. We just need min/max indices)
+        # Note: _get_cell logic: r = (lat - min_lat) / step. Higher lat = higher r.
+        
+        r_start = min(r_min, r_max)
+        r_end = max(r_min, r_max)
+        c_start = min(c_min, c_max)
+        c_end = max(c_min, c_max)
+        
+        unique_edges = set()
+        
+        # Iterate through the range of cells (inclusive)
+        for r in range(r_start, r_end + 1):
+            for c in range(c_start, c_end + 1):
+                if (r, c) in self.grid:
+                    unique_edges.update(self.grid[(r, c)])
+                    
+        return unique_edges
