@@ -768,7 +768,7 @@ class MapVisualizer:
             color = poi_colors.get(poi.type, '#ffffff')
             # Draw circle
             r = 3 
-            self.canvas.create_oval(px-r, py-r, px+r, py+r, fill=color, outline="black")
+            self.canvas.create_oval(px-r, py-r, px+r, py+r, fill=color, outline="black", tags="poi")
             
             count += 1
             if count > 500: break # Limit POIs for performance

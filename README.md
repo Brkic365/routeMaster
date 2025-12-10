@@ -2,7 +2,7 @@
 
 **RouteMaster** is a high-performance Python-based traffic simulation and navigation system designed for real-time pathfinding on OpenStreetMap (OSM) data. It features a custom **Spatial Hashing** engine for O(1) queries, dynamic A* rerouting, and an interactive visualizations dashboard.
 
-![RouteMaster Navigation Mode](https://via.placeholder.com/800x400.png?text=RouteMaster+Visualization) *Representative Image*
+![RouteMaster Navigation Mode](https://ibb.co/CKz2vJ32) *Representative Image*
 
 ## 🚀 Key Features
 
@@ -28,8 +28,8 @@
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/yourusername/routemaster.git
-    cd routemaster
+    git clone https://github.com/Brkic365/RouteMaster.git
+    cd RouteMaster
     ```
 
 2.  **Ensure Map Data**:
@@ -63,4 +63,4 @@
 
 ---
 *Created by [Antonio Brkic](https://github.com/Brkic365)[Francesco Marko Livaic](https://github.com/markolivaic)*
-*Developed for Advanced Algorithms Class / Professional Portfolio.*
+*Developed for Advanced Python Algorithms Class / Professional Portfolio.*

@@ -21,7 +21,7 @@ class Theme:
         'motorway': 130, 'trunk': 110, 'primary': 80,
         'secondary': 60, 'tertiary': 50, 'residential': 30, 
         'motorway_link': 60, 'primary_link': 50, 'unknown': 30,
-        'jammed': {'width': 5, 'color': '#ff8800'},
+        'jammed': 10,
         'blocked': 0   # Blocked
     }
 
