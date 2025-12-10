@@ -2,7 +2,7 @@
 
 **RouteMaster** is a high-performance Python-based traffic simulation and navigation system designed for real-time pathfinding on OpenStreetMap (OSM) data. It features a custom **Spatial Hashing** engine for O(1) queries, dynamic A* rerouting, and an interactive visualizations dashboard.
 
-![RouteMaster Navigation Mode](https://ibb.co/CKz2vJ32) *Representative Image*
+![RouteMaster Navigation Mode](app_screenshot.png)
 
 ## 🚀 Key Features
 
