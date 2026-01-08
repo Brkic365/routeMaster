@@ -1,24 +1,18 @@
-from parser import load_osm_data
-from visualizer import MapVisualizer
+"""Main entry point for RouteMaster traffic simulation.
 
-OSM_FILE = "mapa_trg.osm"
+This script serves as the entry point for the application.
+It imports and runs the main function from the src package.
+"""
 
-def main():
-    print("Loading map data...")
-    graph = load_osm_data(OSM_FILE)
-    
-    if not graph or len(graph.nodes) < 2:
-        print("Failed to load graph data.")
-        return
+import sys
+from pathlib import Path
 
-    print("Launching visualizer...")
-    viz = MapVisualizer(graph)
-    
-    # Draw initial map state
-    viz.draw_map()
-    
-    # Hand over control to UI
-    viz.show()
+# Add src directory to Python path
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
+from main import main
 
 if __name__ == "__main__":
     main()
+

@@ -1,13 +1,27 @@
+"""Spatial hash grid for efficient 2D spatial queries.
+
+Maps geographic coordinates to a grid of cells for O(1) average
+time complexity when finding nearby edges.
+"""
+
+from typing import List, Set, Tuple
 from models import Graph
-import math
+
 
 class SpatialGrid:
-    """
-    A Spatial Hash Grid for efficient 2D spatial queries.
+    """Spatial hash grid for efficient edge queries.
+
     Maps geographic coordinates (lat, lon) to a grid of cells (buckets).
     Allows O(1) average time complexity for finding nearby edges.
+
+    Attributes:
+        graph: The road network graph
+        rows: Number of grid rows
+        cols: Number of grid columns
+        grid: Dictionary mapping (row, col) to list of (u_id, v_id) tuples
     """
-    def __init__(self, graph: Graph, rows: int = 50, cols: int = 50):
+
+    def __init__(self, graph: Graph, rows: int = 50, cols: int = 50) -> None:
         self.graph = graph
         self.rows = rows
         self.cols = cols
@@ -28,7 +42,7 @@ class SpatialGrid:
         # Build the grid immediately
         self.build()
 
-    def _get_cell(self, lat, lon):
+    def _get_cell(self, lat: float, lon: float) -> Tuple[int, int]:
         r = int((lat - self.min_lat) / self.lat_step)
         c = int((lon - self.min_lon) / self.lon_step)
         
@@ -37,7 +51,7 @@ class SpatialGrid:
         c = max(0, min(c, self.cols - 1))
         return r, c
 
-    def build(self):
+    def build(self) -> None:
         print("Building spatial grid...")
         count = 0
         for u_id in self.graph.edges:
@@ -45,7 +59,7 @@ class SpatialGrid:
             u = self.graph.nodes[u_id]
             
             for edge in self.graph.edges[u_id]:
-                v_id = edge['to']
+                v_id = edge.to
                 if v_id not in self.graph.nodes: continue
                 v = self.graph.nodes[v_id]
                 
@@ -61,13 +75,21 @@ class SpatialGrid:
                 count += 1
         print(f"Spatial grid built with {count} edge references.")
 
-    def _add_to_cell(self, r, c, u, v):
+    def _add_to_cell(self, r: int, c: int, u: str, v: str) -> None:
         if (r, c) not in self.grid:
             self.grid[(r, c)] = []
         self.grid[(r, c)].append((u, v))
 
-    def query(self, lat: float, lon: float) -> list:
-        """ Returns a list of candidate edges in the cell around specific lat, lon. """
+    def query(self, lat: float, lon: float) -> List[Tuple[str, str]]:
+        """Query for candidate edges near a geographic point.
+
+        Args:
+            lat: Latitude coordinate
+            lon: Longitude coordinate
+
+        Returns:
+            List of (u_id, v_id) tuples representing candidate edges
+        """
         r, c = self._get_cell(lat, lon)
         candidates = []
         
@@ -82,8 +104,24 @@ class SpatialGrid:
         
         return candidates
 
-    def query_bbox(self, min_lat: float, max_lat: float, min_lon: float, max_lon: float) -> set:
-        """ Returns a set of unique edge tuples found in the grid cells covered by the bounding box. """
+    def query_bbox(
+        self,
+        min_lat: float,
+        max_lat: float,
+        min_lon: float,
+        max_lon: float
+    ) -> Set[Tuple[str, str]]:
+        """Query for edges within a bounding box.
+
+        Args:
+            min_lat: Minimum latitude
+            max_lat: Maximum latitude
+            min_lon: Minimum longitude
+            max_lon: Maximum longitude
+
+        Returns:
+            Set of unique (u_id, v_id) tuples found in the bounding box
+        """
         
         # Determine grid index ranges
         r_min, c_min = self._get_cell(min_lat, min_lon)

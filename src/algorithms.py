@@ -1,12 +1,28 @@
+"""Pathfinding algorithms for RouteMaster.
+
+Implements A* pathfinding with traffic awareness and turn-by-turn navigation.
+"""
+
 import heapq
 import math
+from typing import List, Tuple, Dict, Optional
 from utils import calculate_turn_dir, haversine_distance
-from models import Graph, Node
+from models import Graph, Node, Edge
 
-def reconstruct_path(previous_nodes: dict[str, str | None], start: str, end: str) -> list[str]:
-    """
-    Reconstructs the path from start to end using the came_from map.
-    Returns a list of node IDs.
+def reconstruct_path(
+    previous_nodes: Dict[str, Optional[str]],
+    start: str,
+    end: str
+) -> List[str]:
+    """Reconstruct the path from start to end using the came_from map.
+
+    Args:
+        previous_nodes: Dictionary mapping node ID to previous node ID
+        start: Start node ID
+        end: End node ID
+
+    Returns:
+        List of node IDs representing the path
     """
     path = []
     current_node = end
@@ -25,10 +41,18 @@ def reconstruct_path(previous_nodes: dict[str, str | None], start: str, end: str
         
     return path
 
-def a_star(graph: Graph, start_id: str, end_id: str) -> tuple[list[str], float]:
-    """
-    A* algorithm with traffic awareness and Turn Costs.
+def a_star(graph: Graph, start_id: str, end_id: str) -> Tuple[List[str], float]:
+    """A* pathfinding algorithm with traffic awareness and turn costs.
+
     Penalty is added for sharp turns to encourage smoother paths.
+
+    Args:
+        graph: The road network graph
+        start_id: Start node ID
+        end_id: End node ID
+
+    Returns:
+        Tuple of (path as list of node IDs, total distance in meters)
     """
     # Priority Queue tuple: (f_score, node_id)
     pq = [(0.0, start_id)]
@@ -55,12 +79,12 @@ def a_star(graph: Graph, start_id: str, end_id: str) -> tuple[list[str], float]:
         parent_id = came_from.get(current_node_id)
         
         for edge in graph.get_neighbors(current_node_id):
-            neighbor_id = edge['to']
+            neighbor_id = edge.to
             v_node = graph.nodes[neighbor_id]
             
             # 1. Base Weight (Traffic)
-            weight = edge['weight']
-            status = edge.get('status')
+            weight = edge.weight
+            status = edge.status
             if status == 'jammed': weight *= 5.0
             elif status == 'blocked': weight = float('inf')
             
@@ -81,9 +105,8 @@ def a_star(graph: Graph, start_id: str, end_id: str) -> tuple[list[str], float]:
                 if len1 > 0 and len2 > 0:
                     dot = (v1x * v2x + v1y * v2y) / (len1 * len2)
                     dot = max(-1.0, min(1.0, dot))
-                    # If dot is near 1, it's straight. If dot < 0.5 (60 deg), penalty.
                     if dot < 0.5:
-                        turn_penalty = 20.0 # equivalent to 20m detour
+                        turn_penalty = 20.0
             
             tentative_g = g_score[current_node_id] + weight + turn_penalty
             
@@ -97,8 +120,16 @@ def a_star(graph: Graph, start_id: str, end_id: str) -> tuple[list[str], float]:
                 
     return [], float('infinity')
 
-def generate_instructions(graph, path):
-    """ Generates turn-by-turn navigation instructions from a node path. """
+def generate_instructions(graph: Graph, path: List[str]) -> List[str]:
+    """Generates turn-by-turn navigation instructions from a node path.
+
+    Args:
+        graph: The road network graph
+        path: List of node IDs representing the route
+
+    Returns:
+        List of instruction strings
+    """
     if not path or len(path) < 2:
         return ["You have reached your destination."]
         
@@ -109,8 +140,8 @@ def generate_instructions(graph, path):
     def get_street_name(u, v):
         if u in graph.edges:
             for e in graph.edges[u]:
-                if e['to'] == v:
-                    return e.get('name', 'Unknown Road')
+                if e.to == v:
+                    return e.name
         return "Unknown Road"
 
     # Initial street
@@ -125,8 +156,8 @@ def generate_instructions(graph, path):
         dist = 0
         if u in graph.edges:
             for e in graph.edges[u]:
-                if e['to'] == v:
-                    dist = e['weight']
+                if e.to == v:
+                    dist = e.weight
                     break
         
         # Safety check for infinite distances (Crash prevention)

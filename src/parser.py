@@ -1,11 +1,20 @@
+"""OSM file parser for RouteMaster.
+
+Handles parsing OpenStreetMap XML files and building the road network graph.
+"""
+
 import xml.etree.ElementTree as ET
+from typing import Optional
 from models import Graph, POI
 from utils import haversine_distance
-from collections import deque
 
-def keep_only_largest_component(graph: Graph):
-    """
-    Retains only the largest connected component of the road network to prevent routing errors.
+def keep_only_largest_component(graph: Graph) -> None:
+    """Retain only the largest connected component of the road network.
+
+    Prevents routing errors by removing disconnected subgraphs.
+
+    Args:
+        graph: The graph to filter
     """
     
     # 1. Find all components
@@ -23,7 +32,7 @@ def keep_only_largest_component(graph: Graph):
             while stack:
                 curr = stack.pop()
                 for edge in graph.get_neighbors(curr):
-                    neighbor = edge['to']
+                    neighbor = edge.to
                     if neighbor in graph.nodes and neighbor not in visited:
                         visited.add(neighbor)
                         current_component.add(neighbor)
@@ -49,12 +58,20 @@ def keep_only_largest_component(graph: Graph):
             original_edges = graph.edges[n]
             cleaned_edges = [
                 edge for edge in original_edges 
-                if edge['to'] in largest_component
+                if edge.to in largest_component
             ]
             graph.edges[n] = cleaned_edges
 
 
-def load_osm_data(filepath):
+def load_osm_data(filepath: str) -> Optional[Graph]:
+    """Load and parse an OSM XML file into a Graph structure.
+
+    Args:
+        filepath: Path to the OSM XML file
+
+    Returns:
+        Graph object if successful, None on error
+    """
     print(f"Parsing: {filepath}...")
     try:
         tree = ET.parse(filepath)
